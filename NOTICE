@@ -1,0 +1,24 @@
+flexicubes-webgpu
+
+This project is an independent TypeScript and WebGPU implementation of the
+FlexiCubes method. It is not an official NVIDIA project and is not endorsed by
+or affiliated with NVIDIA.
+
+The method and reference implementation originate from:
+
+  FlexiCubes
+  Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES.
+  https://github.com/nv-tlabs/FlexiCubes
+
+The reference implementation is licensed under the Apache License, Version
+2.0. Source files adapted from that implementation must retain its applicable
+copyright and license notices and must prominently state that they were
+modified.
+
+The FlexiCubes paper is:
+
+  Tianchang Shen et al. "Flexible Isosurface Extraction for Gradient-Based
+  Mesh Optimization." ACM Transactions on Graphics 42(4), 2023.
+  https://doi.org/10.1145/3592430
+
+All other project contributions are copyright their respective authors.
