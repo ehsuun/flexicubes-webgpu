@@ -152,8 +152,8 @@ triangles while measuring initial call return and main-thread timer gaps.
 Input generation is intentionally outside the measured library interval.
 
 On 2026-07-25, headless Chrome on an NVIDIA Ampere adapter completed that
-synthetic signed workload in about 0.73 seconds, returned from the initial call
-in about 2.7 milliseconds, observed a maximum timer gap of about 8.6
+synthetic signed workload in about 2.14 seconds, returned from the initial call
+in about 1.3 milliseconds, observed a maximum timer gap of about 6.7
 milliseconds, and reported about 64.6 MB peak GPU allocation. This is one
 machine and one synthetic workload, not a cross-device performance guarantee.
 

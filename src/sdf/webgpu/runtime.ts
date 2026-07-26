@@ -6,7 +6,7 @@ import type {
 import { SdfBakeAbortError } from "../cpuReference.js";
 import { SdfGpuBudgetError } from "./planner.js";
 
-const COPY_CHUNK_ELEMENTS = 262_144;
+const COPY_CHUNK_ELEMENTS = 65_536;
 
 export function throwIfAborted(signal: AbortSignal | undefined): void {
   if (signal?.aborted === true) {
