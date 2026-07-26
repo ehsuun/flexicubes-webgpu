@@ -5,6 +5,7 @@ import type {
   WebGpuFlexiCubesExtractOptions,
   WebGpuFlexiCubesExtractionResult,
 } from "../../core/types.js";
+import { canonicalizeExtractedMesh } from "../canonicalize.js";
 import {
   GpuBufferTracker,
   readBufferCopy,
@@ -658,11 +659,11 @@ export async function extractFlexiCubesWebGpu(
     tracker.destroy(outputIndices);
     reportProgress(options, "readback", 3, 3);
 
-    const mesh: ExtractedMesh = {
+    const mesh: ExtractedMesh = canonicalizeExtractedMesh({
       positions,
       indices,
       sourceCells: provenance,
-    };
+    });
     return {
       mesh,
       stats: {

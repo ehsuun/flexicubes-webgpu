@@ -22,6 +22,7 @@ import type {
   FlexiCubesPhase,
   Vec3,
 } from "../core/types.js";
+import { canonicalizeExtractedMesh } from "./canonicalize.js";
 import {
   FLEXICUBES_AMBIGUITY_CHECKS,
   FLEXICUBES_DMC_TABLE,
@@ -813,11 +814,11 @@ export function extractFlexiCubesCpuReference(
   }
 
   return {
-    mesh: {
+    mesh: canonicalizeExtractedMesh({
       positions: new Float32Array(dualVertices.positions),
       indices: new Uint32Array(faces.indices),
       sourceCells: new Uint32Array(dualVertices.sourceCells),
-    },
+    }),
     stats: {
       backend: "cpu-reference",
       surfaceCellCount: surfaceCells.length,

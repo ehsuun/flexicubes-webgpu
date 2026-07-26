@@ -2,6 +2,7 @@ import {
   bakeDenseSdfCpuReference,
   bakeDenseSdfWebGpu,
   bakeDenseSdfWebGpuResident,
+  buildProxyMeshWebGpu,
   downloadDenseScalarFieldWebGpu,
   extractFlexiCubesCpuReference,
   extractFlexiCubesWebGpu,
@@ -13,6 +14,7 @@ import {
 import {
   createCubeMesh,
   createPlaneMesh,
+  createUvSphereMesh,
 } from "../fixtures/meshes.js";
 
 interface FieldComparison {
@@ -29,6 +31,10 @@ interface BrowserResult {
     readonly triangleCount: number;
     readonly sdfMs: number;
     readonly extractionMs: number;
+  };
+  readonly composedSphere: {
+    readonly sourceTriangleCount: number;
+    readonly proxyTriangleCount: number;
   };
   readonly millionTriangleCancellation: {
     readonly callReturnMs: number;
@@ -204,6 +210,19 @@ function positionRecords(
   return records.sort();
 }
 
+function assertSameArray(
+  left: ArrayLike<number>,
+  right: ArrayLike<number>,
+  label: string,
+): void {
+  if (
+    left.length !== right.length
+    || Array.from(left).some((value, index) => value !== right[index])
+  ) {
+    throw new Error(`${label} differs across identical GPU extractions`);
+  }
+}
+
 function assertClosedManifold(indices: Uint32Array): void {
   const edgeCounts = new Map<string, number>();
   for (let index = 0; index < indices.length; index += 3) {
@@ -376,6 +395,25 @@ async function runComposedCase(device: GPUDevice): Promise<{
       maxOutputTriangles: 100_000,
       execution: { maxGpuBytes: 64 * 1024 * 1024 },
     });
+    const repeatedGpu = await extractFlexiCubesWebGpu(device, resident.field, {
+      maxOutputTriangles: 100_000,
+      execution: { maxGpuBytes: 64 * 1024 * 1024 },
+    });
+    assertSameArray(
+      gpu.mesh.positions,
+      repeatedGpu.mesh.positions,
+      "canonical positions",
+    );
+    assertSameArray(
+      gpu.mesh.sourceCells,
+      repeatedGpu.mesh.sourceCells,
+      "canonical provenance",
+    );
+    assertSameArray(
+      gpu.mesh.indices,
+      repeatedGpu.mesh.indices,
+      "canonical indices",
+    );
 
     if (gpu.stats.dualVertexCount !== cpu.stats.dualVertexCount) {
       throw new Error("CPU and GPU dual-vertex counts differ");
@@ -422,6 +460,64 @@ async function runComposedCase(device: GPUDevice): Promise<{
   }
 }
 
+async function runComposedSphereCase(device: GPUDevice): Promise<{
+  readonly sourceTriangleCount: number;
+  readonly proxyTriangleCount: number;
+}> {
+  const source = createUvSphereMesh();
+  const sdfOptions = {
+    domain: {
+      min: [-1.55, -1.55, -1.55],
+      max: [1.55, 1.55, 1.55],
+    },
+    cellCounts: [20, 20, 20],
+    signPolicy: { kind: "parity" as const },
+    execution: {
+      maxGpuBytes: 256 * 1024 * 1024,
+      maxTriangleReferences: 12_000_000,
+      triangleBatchSize: 65_536,
+      sampleBatchSize: 4_096,
+    },
+  } as const;
+  const extractionOptions = {
+    maxOutputTriangles: 4_096,
+    execution: { maxGpuBytes: 256 * 1024 * 1024 },
+  } as const;
+  const result = await buildProxyMeshWebGpu(
+    device,
+    source,
+    sdfOptions,
+    extractionOptions,
+  );
+  const repeated = await buildProxyMeshWebGpu(
+    device,
+    source,
+    sdfOptions,
+    extractionOptions,
+  );
+  assertSameArray(
+    result.mesh.positions,
+    repeated.mesh.positions,
+    "sphere canonical positions",
+  );
+  assertSameArray(
+    result.mesh.sourceCells,
+    repeated.mesh.sourceCells,
+    "sphere canonical provenance",
+  );
+  assertSameArray(
+    result.mesh.indices,
+    repeated.mesh.indices,
+    "sphere canonical indices",
+  );
+  assertClosedManifold(result.mesh.indices);
+  assertOutwardWinding(result.mesh.positions, result.mesh.indices, [0, 0, 0]);
+  return {
+    sourceTriangleCount: source.indices.length / 3,
+    proxyTriangleCount: result.mesh.indices.length / 3,
+  };
+}
+
 async function main(): Promise<BrowserResult> {
   if (navigator.gpu === undefined) {
     throw new Error("navigator.gpu is unavailable");
@@ -446,6 +542,7 @@ async function main(): Promise<BrowserResult> {
       signPolicy: { kind: "shell", halfThickness: 0.2 },
     });
     const composed = await runComposedCase(device);
+    const composedSphere = await runComposedSphereCase(device);
     const millionTriangleCancellation = (
       await verifyMillionTriangleCancellation(device)
     );
@@ -480,6 +577,7 @@ async function main(): Promise<BrowserResult> {
       cube: cube.comparison,
       shell: shell.comparison,
       composed,
+      composedSphere,
       millionTriangleCancellation,
       stress,
       gpuStats: {

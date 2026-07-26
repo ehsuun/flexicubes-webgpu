@@ -47,6 +47,62 @@ export function createPlaneMesh(): IndexedMesh {
   };
 }
 
+export function createUvSphereMesh(
+  latitudeSegments = 18,
+  longitudeSegments = 36,
+  radius = 1.25,
+): IndexedMesh {
+  const positions: number[] = [0, radius, 0];
+  for (let latitude = 1; latitude < latitudeSegments; latitude++) {
+    const theta = Math.PI * latitude / latitudeSegments;
+    for (let longitude = 0; longitude < longitudeSegments; longitude++) {
+      const phi = Math.PI * 2 * longitude / longitudeSegments;
+      positions.push(
+        radius * Math.sin(theta) * Math.cos(phi),
+        radius * Math.cos(theta),
+        radius * Math.sin(theta) * Math.sin(phi),
+      );
+    }
+  }
+  const southPole = positions.length / 3;
+  positions.push(0, -radius, 0);
+  const ringVertex = (latitude: number, longitude: number): number => (
+    1 + (latitude - 1) * longitudeSegments
+      + longitude % longitudeSegments
+  );
+  const indices: number[] = [];
+  for (let longitude = 0; longitude < longitudeSegments; longitude++) {
+    indices.push(
+      0,
+      ringVertex(1, longitude + 1),
+      ringVertex(1, longitude),
+    );
+  }
+  for (let latitude = 1; latitude < latitudeSegments - 1; latitude++) {
+    for (let longitude = 0; longitude < longitudeSegments; longitude++) {
+      const current = ringVertex(latitude, longitude);
+      const next = ringVertex(latitude, longitude + 1);
+      const below = ringVertex(latitude + 1, longitude);
+      const belowNext = ringVertex(latitude + 1, longitude + 1);
+      indices.push(
+        current, next, belowNext,
+        current, belowNext, below,
+      );
+    }
+  }
+  for (let longitude = 0; longitude < longitudeSegments; longitude++) {
+    indices.push(
+      southPole,
+      ringVertex(latitudeSegments - 1, longitude),
+      ringVertex(latitudeSegments - 1, longitude + 1),
+    );
+  }
+  return {
+    positions: new Float32Array(positions),
+    indices: new Uint32Array(indices),
+  };
+}
+
 export function reverseWinding(mesh: IndexedMesh): IndexedMesh {
   const indices = new Uint32Array(mesh.indices.length);
   for (let index = 0; index < mesh.indices.length; index += 3) {
