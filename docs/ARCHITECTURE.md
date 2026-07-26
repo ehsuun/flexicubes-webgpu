@@ -26,7 +26,8 @@ and uploading it again is not an acceptable production path.
 
 ## Data contracts
 
-The exact TypeScript names may change before `0.1`, but the semantics may not.
+The TypeScript names may change during alpha, but the semantics below are
+treated as compatibility boundaries.
 
 ### Indexed mesh
 
@@ -44,12 +45,14 @@ of the core API.
 ### Scalar field
 
 ```ts
-interface ScalarField3D {
+interface DenseScalarField3D {
+  storage: "cpu-dense";
   values: Float32Array;
+  cellCounts: readonly [number, number, number];
   sampleCounts: readonly [number, number, number];
   sampleOrigin: readonly [number, number, number];
   sampleSpacing: readonly [number, number, number];
-  signConvention: "negative-inside";
+  signConvention: "negative-inside" | "unsigned";
 }
 ```
 
@@ -62,8 +65,9 @@ from its eight corner samples. Treating a cell-centered volume as vertex
 samples silently moves the represented domain by half a voxel and loses the
 outer sample plane.
 
-GPU-resident fields use the same metadata plus an owned `GPUBuffer`. Ownership
-and disposal are explicit. A download method is optional and asynchronous.
+GPU-resident fields use the same metadata plus their creating `GPUDevice` and
+an owned `GPUBuffer`. Ownership and disposal are explicit. A field cannot be
+used with a different device. Download is optional and asynchronous.
 
 ### Extracted mesh
 
@@ -71,7 +75,7 @@ and disposal are explicit. A download method is optional and asynchronous.
 interface ExtractedMesh {
   positions: Float32Array;
   indices: Uint32Array;
-  sourceCells?: Uint32Array;
+  sourceCells: Uint32Array;
 }
 ```
 
@@ -87,8 +91,6 @@ Nearest-triangle normals do not define a reliable sign for concave,
 self-intersecting, open, or inconsistently wound meshes. The SDF API must make
 its geometry assumption explicit:
 
-- `closed`: robust inside/outside classification for a closed, consistently
-  wound surface.
 - `parity`: multi-direction ray parity with deterministic handling of shared
   edges and vertices.
 - `shell`: unsigned distance minus a requested thickness for open or thin
@@ -96,35 +98,39 @@ its geometry assumption explicit:
 - `unsigned`: distance only, for consumers that do not extract a closed
   isosurface.
 
-The first production proxy path should implement `parity` and `shell`.
-Generalized winding is a later quality option, not a prerequisite for bounded
-runtime behavior.
+The dense backend implements `parity`, `shell`, and `unsigned`. Generalized
+winding is a later quality option, not a prerequisite for bounded runtime
+behavior.
 
 ### Acceleration
 
-The current target is a GPU-built spatial acceleration structure. A CPU
-reference may use straightforward bins or a BVH, but the browser path must not
-create a JavaScript array for every spatial bin and synchronously distribute
+The current backend builds its spatial acceleration structure on the GPU. The
+CPU reference is deliberately straightforward, but the browser path does not
+create a JavaScript array for every spatial bin or synchronously distribute
 millions of triangles across those arrays.
 
-Candidate production sequence:
+Implemented dense sequence:
 
 1. Upload indexed positions and indices.
 2. Compute transformed triangle bounds and normals.
-3. Count triangle references per coarse bin.
-4. Prefix-sum counts and scatter triangle references.
+3. Count triangle references per coarse distance and projected-parity bin.
+4. Read back the small count buffers, prefix them on the CPU, and scatter
+   triangle references on the GPU.
 5. Evaluate unsigned distance for field samples in bounded tiles.
 6. Classify sign according to the selected policy.
-7. Emit either a dense field or compact active bricks.
+7. Emit a dense GPU-resident field.
 
 Every dispatch is bounded by device limits. Large jobs expose progress and
-cancellation between tiles.
+cancellation between batches. Prefixing coarse count buffers is small and
+independent of input triangle count; a future scan kernel can remove that
+readback if much larger bin grids become useful.
 
 ### Dense and sparse fields
 
 Dense fields are the correctness baseline and are appropriate at modest
-resolution. Sparse bricks reduce storage and extraction work when occupancy is
-low, but they are an optimization, not a separate semantic format.
+resolution. Sparse bricks can reduce storage and extraction work when
+occupancy is low, but they are a future optimization, not a separate semantic
+format.
 
 Sparse bricks must include a coarse fallback field or explicit outside value so
 distance queries remain defined away from active bricks. Brick activation must
@@ -132,15 +138,15 @@ include a conservative halo large enough for zero-crossing extraction.
 
 ## FlexiCubes extraction
 
-The implementation is staged:
+The implemented fixed-field path contains:
 
 1. A deterministic CPU port of fixed-field triangular extraction.
-2. Golden comparisons with the Apache-2.0 PyTorch reference.
-3. WebGPU classification, prefix-sum allocation, dual-vertex computation, and
-   triangulation.
-4. Optional gradient/QEF path for sharper fixed-field output.
+2. Lookup tables generated from the pinned Apache-2.0 PyTorch reference.
+3. WebGPU classification, atomic compact allocation, dual-vertex computation,
+   and triangulation.
+4. CPU/GPU topology, position, manifold, and orientation checks.
 
-The first release uses fixed fields and uniform FlexiCubes weights. It does not
+The alpha uses fixed fields and uniform FlexiCubes weights. It does not
 claim the optimization-time quality improvements from the paper, which rely on
 learned or optimized flexible parameters.
 
@@ -152,11 +158,14 @@ and modification markers.
 The primary backend accepts standards-based WebGPU objects, beginning with a
 `GPUDevice`. It does not import a renderer.
 
-Two API levels are planned:
+Two API levels are implemented:
 
 - High level: typed arrays in, typed arrays out.
-- Composed GPU: existing GPU buffers in, GPU buffers out, with explicit
-  layouts and ownership.
+- Composed GPU: typed arrays in, a GPU-resident scalar field between stages,
+  and a compact typed-array mesh out.
+
+Accepting externally owned position/index buffers and returning GPU-owned mesh
+buffers are future API levels, not current claims.
 
 Renderer adapters may live in optional packages, but cannot become dependencies
 of the core. If an engine does not expose its `GPUDevice` as a stable public
@@ -168,9 +177,9 @@ the engine's supported compute API instead of reaching into private fields.
 Runtime proxy generation is opportunistic background work. The library must
 never express "eventually finishes" as its only contract.
 
-Every production job accepts:
+Production entry points accept:
 
-- maximum output resolution/cells
+- explicit output resolution/cells
 - maximum GPU memory
 - maximum output triangles
 - per-submit work budget
@@ -178,8 +187,9 @@ Every production job accepts:
 - progress callback
 
 Planning returns an estimate before heavy work begins. If the requested job
-cannot fit the declared budget, the library returns a typed refusal or a
-smaller proposed plan. It does not start an unbounded fallback automatically.
+cannot fit the declared budget, the library throws a typed budget error before
+the refused allocation. It does not choose a smaller plan or start an
+unbounded fallback automatically.
 
 Application rendering must continue while a job is pending. The last valid
 proxy, direct simple geometry, or a conservative bounding proxy remains active
@@ -187,16 +197,20 @@ until replacement succeeds.
 
 ## Correctness and performance gates
 
-No backend is production-ready until it passes:
+Current automated gates cover:
 
 - analytic field fixtures and empty/full edge cases
-- topology-table comparisons with the reference implementation
+- all 256 topology-table cases and ambiguity inversions from the reference
 - CPU/WebGPU output agreement within documented tolerances
 - sign tests for closed, open, thin, and reversed-winding fixtures
-- cancellation and device-loss tests
+- cancellation tests
 - peak-memory accounting
 - main-thread long-task measurement
-- browser benchmarks at 10K, 100K, 1M, and multi-million input triangles
+- a one-million-triangle browser benchmark
+
+Before a stable release, coverage still needs device loss, multiple browser and
+adapter families, 10K/100K/multi-million benchmark points, and sparse-field
+boundary agreement.
 
 The primary latency metrics are:
 
@@ -206,6 +220,19 @@ The primary latency metrics are:
 - peak CPU and GPU memory
 
 Total completion time alone cannot certify an interactive path.
+
+## Known limitations
+
+- Dense storage scales with lattice volume and is intentionally bounded.
+- Three-axis parity is robust to winding reversal but cannot make arbitrary
+  self-intersecting or non-manifold input well-defined.
+- Open and thin geometry needs explicit shell thickness.
+- Cancellation occurs between asynchronous upload/dispatch batches; submitted
+  GPU work itself cannot be recalled.
+- Final positions, indices, and provenance are read back to CPU. Only the
+  intermediate scalar field stays resident.
+- Uniform fixed-field weights do not provide the paper's
+  optimization/training-time benefits.
 
 ## Product boundary
 

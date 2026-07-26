@@ -1,13 +1,13 @@
 # SDF prototype migration
 
-## Recommendation
+## Outcome
 
-Migrate the reusable algorithms from the existing Vutify SDF prototype into
-this repository, but do not copy the application implementation wholesale.
+The reusable algorithms were reimplemented here without copying the Vutify
+application implementation wholesale.
 
-The current implementation proves that WebGPU compute, dense binning, sparse
-brick storage, and Babylon integration can work. It also contains assumptions
-that should not become public contracts:
+The Vutify prototype proved that WebGPU compute, dense binning, sparse brick
+storage, and Babylon integration can work. It also contains assumptions that
+should not become public contracts:
 
 - Babylon.js compute and storage-buffer ownership
 - Vutify logging, VFX resource, and lifecycle types
@@ -37,7 +37,7 @@ retain NVIDIA's applicable Apache-2.0 notice.
 
 ## Migration phases
 
-### Phase 1: contracts and CPU oracle
+### Phase 1: contracts and CPU oracle — complete
 
 Deliver:
 
@@ -53,7 +53,7 @@ Accept when:
 - sign policy is explicit in every result
 - no Vutify or Babylon imports exist
 
-### Phase 2: bounded dense WebGPU SDF
+### Phase 2: bounded dense WebGPU SDF — complete
 
 Deliver:
 
@@ -72,7 +72,7 @@ Accept when:
 The existing Vutify distance WGSL is useful here. Its CPU bin builder and sign
 line are not.
 
-### Phase 3: fixed-field FlexiCubes CPU reference
+### Phase 3: fixed-field FlexiCubes CPU reference — complete
 
 Deliver:
 
@@ -88,12 +88,12 @@ Accept when:
 - ambiguous cases match the reference
 - fixed-field limitations are documented without claiming training-time quality
 
-### Phase 4: composed GPU extraction
+### Phase 4: composed GPU extraction — complete
 
 Deliver:
 
 - GPU surface-cell classification
-- prefix-sum output allocation
+- bounded atomic output allocation
 - GPU dual vertices and triangulation
 - SDF-to-extractor handoff without CPU field readback
 - bounded output triangle count
@@ -104,7 +104,7 @@ Accept when:
 - cancellation frees all owned buffers
 - output matches the CPU oracle within tolerance
 
-### Phase 5: sparse fields and production hardening
+### Phase 5: sparse fields and production hardening — pending
 
 Deliver:
 

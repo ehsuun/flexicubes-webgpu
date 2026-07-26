@@ -1,0 +1,73 @@
+{
+  "name": "flexicubes-webgpu",
+  "version": "0.1.0-alpha.0",
+  "description": "Browser-native mesh-to-SDF and FlexiCubes extraction for TypeScript and WebGPU",
+  "type": "module",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ehsuun/flexicubes-webgpu.git"
+  },
+  "bugs": {
+    "url": "https://github.com/ehsuun/flexicubes-webgpu/issues"
+  },
+  "homepage": "https://github.com/ehsuun/flexicubes-webgpu#readme",
+  "sideEffects": false,
+  "files": [
+    "dist",
+    "docs",
+    "LICENSE",
+    "NOTICE",
+    "README.md"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./sdf": {
+      "types": "./dist/sdf/index.d.ts",
+      "import": "./dist/sdf/index.js"
+    },
+    "./flexicubes": {
+      "types": "./dist/flexicubes/index.d.ts",
+      "import": "./dist/flexicubes/index.js"
+    },
+    "./pipeline": {
+      "types": "./dist/pipeline/index.d.ts",
+      "import": "./dist/pipeline/index.js"
+    }
+  },
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "test:webgpu": "node scripts/run-webgpu-browser-test.mjs",
+    "benchmark:webgpu": "node scripts/run-webgpu-browser-test.mjs --stress",
+    "check": "npm run typecheck && npm test && npm run build",
+    "prepare": "npm run build"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "keywords": [
+    "flexicubes",
+    "webgpu",
+    "signed-distance-field",
+    "isosurface",
+    "geometry-processing"
+  ],
+  "devDependencies": {
+    "@types/node": "24.10.1",
+    "@webgpu/types": "0.1.71",
+    "playwright-core": "1.62.0",
+    "typescript": "7.0.2",
+    "vite": "8.1.5",
+    "vitest": "4.1.10"
+  }
+}

@@ -3,9 +3,9 @@
 Browser-native mesh-to-SDF and FlexiCubes isosurface extraction for TypeScript
 and WebGPU.
 
-> **Status:** pre-alpha. The repository and architecture are public so the
-> implementation can be developed in the open, but there is no stable package
-> or API release yet.
+> **Status:** experimental alpha. The CPU references and dense WebGPU pipeline
+> are implemented and tested, but the API may change before `0.1.0`. Consume an
+> immutable Git commit during early integration. No npm release exists yet.
 
 ## Why this exists
 
@@ -13,25 +13,25 @@ Browser 3D tools should be able to create bounded collision, occlusion, and
 lighting proxies at runtime. Requiring every user to preprocess a scene in a
 DCC application defeats that goal.
 
-This project is intended to provide a renderer-neutral pipeline:
+This project provides a renderer-neutral pipeline:
 
 ```text
 indexed triangle mesh -> signed scalar field -> bounded proxy mesh
 ```
 
-Each stage will also be usable independently:
+Each stage is also usable independently:
 
-- **SDF:** build a dense or sparse signed field from indexed geometry.
+- **SDF:** build a dense signed field from indexed geometry.
 - **FlexiCubes:** extract a mesh from an existing scalar field.
-- **Pipeline:** keep intermediate data on the GPU and produce a proxy under an
-  explicit time, memory, and triangle budget.
+- **Pipeline:** keep the field on the GPU and produce a proxy under explicit
+  memory, reference-count, batch-size, and triangle-count limits.
 
 The first production consumer is expected to be Vutify, a browser-based music
 visualization application where the proxy supports runtime surface-cache
 lighting. The library itself will not contain Vutify, Babylon.js, GI, material,
 or scene-lifecycle code.
 
-## Design promises
+## Implemented guarantees
 
 - Renderer-neutral TypeScript contracts and raw WebGPU compute.
 - No work proportional to millions of input triangles runs synchronously on
@@ -43,15 +43,81 @@ or scene-lifecycle code.
 - Clear behavior for closed, open, thin, and inconsistently wound geometry.
 - Measured fallbacks instead of an unbounded "enable and wait" path.
 
-See [Architecture](docs/ARCHITECTURE.md) for the proposed contracts and
-[SDF migration](docs/SDF_MIGRATION.md) for the prototype extraction plan.
+The dense backend builds distance and parity bins on the GPU. JavaScript
+validates and uploads input in bounded asynchronous chunks, so preparation does
+not synchronously walk millions of triangles before returning control. The
+composed path reads back only small allocation counters and the final compact
+mesh; it does not download the dense scalar field.
+
+See [Architecture](docs/ARCHITECTURE.md) for contracts and limitations and
+[SDF migration](docs/SDF_MIGRATION.md) for implementation status.
+
+## Quick start
+
+```ts
+import { buildProxyMeshWebGpu } from "flexicubes-webgpu/pipeline";
+
+const adapter = await navigator.gpu.requestAdapter({
+  powerPreference: "high-performance",
+});
+if (adapter === null) {
+  throw new Error("WebGPU is unavailable");
+}
+const device = await adapter.requestDevice();
+
+const result = await buildProxyMeshWebGpu(
+  device,
+  { positions, indices },
+  {
+    domain: {
+      min: [-1.1, -1.1, -1.1],
+      max: [1.1, 1.1, 1.1],
+    },
+    cellCounts: [48, 48, 48],
+    signPolicy: { kind: "parity" },
+    execution: {
+      maxGpuBytes: 256 * 1024 * 1024,
+      maxTriangleReferences: 12_000_000,
+      triangleBatchSize: 65_536,
+      sampleBatchSize: 4096,
+    },
+  },
+  {
+    maxOutputTriangles: 200_000,
+    execution: {
+      maxGpuBytes: 256 * 1024 * 1024,
+    },
+  },
+);
+
+// result.mesh.positions, result.mesh.indices, result.mesh.sourceCells
+```
+
+Use `bakeDenseSdfWebGpuResident` and `extractFlexiCubesWebGpu` separately when
+the application needs to retain or reuse a field. A resident field is owned,
+belongs to the `GPUDevice` that created it, and must be disposed.
+
+Call `prewarmSdfWebGpu(device)` and `prewarmFlexiCubesWebGpu(device)` during an
+idle/loading phase when first-use shader compilation latency matters.
+
+## Geometry policy
+
+- Use `parity` for closed geometry. It uses three jittered axis rays and a
+  majority vote, so reversed input winding is supported.
+- Use `shell` with an explicit half-thickness for open surfaces, cards, and
+  thin walls.
+- Use `unsigned` only when no zero-isosurface extraction is required.
+
+Parity is not a general repair operation for self-intersecting or non-manifold
+input. Applications should keep their previous proxy or a conservative
+fallback when a job refuses, is cancelled, or receives unsuitable geometry.
 
 ## Scope
 
-The initial release targets fixed-field extraction for practical runtime proxy
-generation. Automatic differentiation, training-time regularizers,
-tetrahedral output, adaptive grids, renderer materials, UV transfer, and GI
-policy are not part of the first release.
+This alpha targets dense fixed-field extraction for practical runtime proxy
+generation. Sparse fields, automatic differentiation, training-time
+regularizers, tetrahedral output, adaptive grids, renderer materials, UV
+transfer, and GI policy are not implemented.
 
 FlexiCubes improves the mesh extracted from a field; it does not make
 mesh-to-field conversion cheap by itself. The SDF builder and its bounded GPU
@@ -64,10 +130,32 @@ commits during early integration and exact `0.x` package versions after the
 first prerelease. Application repositories should keep only their adapter,
 scheduling policy, cache ownership, and product-specific fallback logic.
 
-The project will publish a package only after the CPU reference, WebGPU
-implementation, attribution audit, and browser correctness suite agree on
-golden fields and meshes. Until then, examples in documents are design
-contracts rather than released API.
+The repository is currently consumed from immutable Git revisions. An npm
+package should be published only after a broader browser/device matrix and
+device-loss coverage are complete.
+
+## Verification
+
+```sh
+npm ci
+npm run check
+npm run test:webgpu
+npm run benchmark:webgpu
+```
+
+`npm run test:webgpu` compares CPU and GPU fields, exercises closed and open
+geometry policies, verifies CPU/GPU FlexiCubes agreement, and checks that the
+GPU result is a closed outward-wound two-manifold.
+
+The stress command builds a signed 24-cell field from one million generated
+triangles while measuring initial call return and main-thread timer gaps.
+Input generation is intentionally outside the measured library interval.
+
+On 2026-07-25, headless Chrome on an NVIDIA Ampere adapter completed that
+synthetic signed workload in about 0.73 seconds, returned from the initial call
+in about 2.7 milliseconds, observed a maximum timer gap of about 8.6
+milliseconds, and reported about 64.6 MB peak GPU allocation. This is one
+machine and one synthetic workload, not a cross-device performance guarantee.
 
 ## FlexiCubes attribution
 
