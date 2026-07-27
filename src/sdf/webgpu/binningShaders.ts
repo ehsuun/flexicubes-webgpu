@@ -97,7 +97,7 @@ fn main(@builtin(global_invocation_id) globalId: vec3<u32>) {
     }
   }
 
-  if (params.signMode != 1u) {
+  if (params.signMode != 1u && params.signMode != 3u) {
     return;
   }
   let parityResolution = params.parityBinResolution;
@@ -214,7 +214,7 @@ fn main(@builtin(global_invocation_id) globalId: vec3<u32>) {
   if (!overlapsDomain(triangleMin, triangleMax)) {
     return;
   }
-  if (params.signMode != 1u) {
+  if (params.signMode != 1u && params.signMode != 3u) {
     return;
   }
 

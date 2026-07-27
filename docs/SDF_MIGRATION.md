@@ -43,7 +43,8 @@ Deliver:
 
 - renderer-neutral mesh, domain, scalar-field, and result contracts
 - vertex-sampled dense grid construction
-- analytic CPU distance and explicit `parity`/`shell` sign references
+- analytic CPU distance and explicit `parity`, `parity-shell-union`, and
+  `shell` sign references
 - fixtures for cube, sphere, plane, thin wall, non-convex closed mesh, and
   reversed winding
 

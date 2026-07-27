@@ -32,7 +32,10 @@ function throwIfAborted(signal: AbortSignal | undefined): void {
 
 function validateSignPolicy(options: DenseSdfBakeOptions): void {
   if (
-    options.signPolicy.kind === "shell"
+    (
+      options.signPolicy.kind === "shell"
+      || options.signPolicy.kind === "parity-shell-union"
+    )
     && (
       !Number.isFinite(options.signPolicy.halfThickness)
       || options.signPolicy.halfThickness <= 0
@@ -106,16 +109,30 @@ export function bakeDenseSdfCpuReference(
         if (options.signPolicy.kind === "shell") {
           value -= options.signPolicy.halfThickness;
         } else if (
-          options.signPolicy.kind === "parity"
+          (
+            options.signPolicy.kind === "parity"
+            || options.signPolicy.kind === "parity-shell-union"
+          )
           && unsignedDistance > surfaceEpsilon
         ) {
-          const classification = classifyPointByParity(point, triangles);
+          const classification = classifyPointByParity(
+            point,
+            triangles,
+            completedSamples,
+            surfaceEpsilon,
+          );
           parityRayTriangleTests += classification.rayTriangleTests;
           if (classification.inside) {
             value = -value;
           }
         } else if (unsignedDistance <= surfaceEpsilon) {
           value = 0;
+        }
+        if (options.signPolicy.kind === "parity-shell-union") {
+          value = Math.min(
+            value,
+            unsignedDistance - options.signPolicy.halfThickness,
+          );
         }
 
         values[completedSamples] = value;

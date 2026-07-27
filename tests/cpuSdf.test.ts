@@ -104,6 +104,42 @@ describe("CPU SDF reference", () => {
     expect(result.stats.parityRayTriangleTests).toBe(0);
   });
 
+  it("unions parity interior with a shell that rescues open surfaces", () => {
+    const result = bakeDenseSdfCpuReference(createPlaneMesh(), {
+      domain: CUBE_DOMAIN,
+      cellCounts: [2, 2, 4],
+      signPolicy: {
+        kind: "parity-shell-union",
+        halfThickness: 0.25,
+      },
+    });
+    const lattice = createLattice3D(CUBE_DOMAIN, [2, 2, 4]);
+
+    expect(result.field.values[
+      latticeSampleIndex(lattice, 1, 1, 2)
+    ]).toBeCloseTo(-0.25);
+    expect(result.field.values[
+      latticeSampleIndex(lattice, 1, 1, 3)
+    ]).toBeCloseTo(0.25);
+    expect(result.stats.parityRayTriangleTests).toBeGreaterThan(0);
+  });
+
+  it("retains parity interior beyond the rescue shell", () => {
+    const result = bakeDenseSdfCpuReference(createCubeMesh(), {
+      domain: CUBE_DOMAIN,
+      cellCounts: [4, 4, 4],
+      signPolicy: {
+        kind: "parity-shell-union",
+        halfThickness: 0.1,
+      },
+    });
+    const lattice = createLattice3D(CUBE_DOMAIN, [4, 4, 4]);
+
+    expect(result.field.values[
+      latticeSampleIndex(lattice, 2, 2, 2)
+    ]).toBeCloseTo(-0.5);
+  });
+
   it("supports unsigned distance without negative values", () => {
     const result = bakeDenseSdfCpuReference(createPlaneMesh(), {
       domain: CUBE_DOMAIN,
@@ -154,6 +190,17 @@ describe("CPU SDF reference", () => {
       domain: CUBE_DOMAIN,
       cellCounts: [2, 2, 2],
       signPolicy: { kind: "shell", halfThickness: 0 },
+    })).toThrow(/halfThickness/);
+  });
+
+  it("rejects a non-positive parity-shell union thickness", () => {
+    expect(() => bakeDenseSdfCpuReference(createPlaneMesh(), {
+      domain: CUBE_DOMAIN,
+      cellCounts: [2, 2, 2],
+      signPolicy: {
+        kind: "parity-shell-union",
+        halfThickness: 0,
+      },
     })).toThrow(/halfThickness/);
   });
 });

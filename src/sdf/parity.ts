@@ -1,17 +1,60 @@
 import type { Vec3 } from "../core/types.js";
 import type { PreparedTriangle } from "./triangle.js";
 
-const RAY_DIRECTIONS: readonly Vec3[] = [
-  [0.923364, 0.342151, 0.174781],
-  [-0.204873, 0.858143, 0.470825],
-  [0.361744, -0.268118, 0.892929],
+const AXIS_DIRECTIONS: readonly Vec3[] = [
+  [1, 0, 0],
+  [0, 1, 0],
+  [0, 0, 1],
 ];
+
+const JITTER_SALTS = [
+  [0x68bc21eb, 0x02e5be93],
+  [0x967a889b, 0x4f1bbcdc],
+  [0x7a2d9b61, 0xc3a5c85c],
+] as const;
+const JITTER_AXES = [
+  [1, 2],
+  [0, 2],
+  [0, 1],
+] as const;
+
+function hash32(input: number): number {
+  let value = input >>> 0;
+  value = (value ^ (value >>> 16)) >>> 0;
+  value = Math.imul(value, 0x7feb352d) >>> 0;
+  value = (value ^ (value >>> 15)) >>> 0;
+  value = Math.imul(value, 0x846ca68b) >>> 0;
+  return (value ^ (value >>> 16)) >>> 0;
+}
+
+function signedJitter(sampleIndex: number, salt: number): number {
+  return (hash32((sampleIndex ^ salt) >>> 0) & 1023) / 1023 - 0.5;
+}
+
+function jitteredOrigin(
+  point: Vec3,
+  sampleIndex: number,
+  axis: number,
+  jitterScale: number,
+): Vec3 {
+  const origin: [number, number, number] = [
+    point[0],
+    point[1],
+    point[2],
+  ];
+  const axes = JITTER_AXES[axis]!;
+  const salts = JITTER_SALTS[axis]!;
+  origin[axes[0]] += signedJitter(sampleIndex, salts[0]) * jitterScale;
+  origin[axes[1]] += signedJitter(sampleIndex, salts[1]) * jitterScale;
+  return origin;
+}
 
 function rayTriangleIntersection(
   origin: Vec3,
   direction: Vec3,
   triangle: PreparedTriangle,
-): number | undefined {
+  surfaceEpsilon: number,
+): boolean {
   const edge1X = triangle.b[0] - triangle.a[0];
   const edge1Y = triangle.b[1] - triangle.a[1];
   const edge1Z = triangle.b[2] - triangle.a[2];
@@ -22,10 +65,7 @@ function rayTriangleIntersection(
   const pY = direction[2] * edge2X - direction[0] * edge2Z;
   const pZ = direction[0] * edge2Y - direction[1] * edge2X;
   const determinant = edge1X * pX + edge1Y * pY + edge1Z * pZ;
-
-  if (Math.abs(determinant) < 1e-12) {
-    return undefined;
-  }
+  if (Math.abs(determinant) < 1e-8) return false;
 
   const inverseDeterminant = 1 / determinant;
   const offsetX = origin[0] - triangle.a[0];
@@ -36,9 +76,9 @@ function rayTriangleIntersection(
     + offsetY * pY
     + offsetZ * pZ
   ) * inverseDeterminant;
-  const barycentricEpsilon = 1e-10;
+  const barycentricEpsilon = 1e-6;
   if (u < -barycentricEpsilon || u > 1 + barycentricEpsilon) {
-    return undefined;
+    return false;
   }
 
   const qX = offsetY * edge1Z - offsetZ * edge1Y;
@@ -53,7 +93,7 @@ function rayTriangleIntersection(
     v < -barycentricEpsilon
     || u + v > 1 + barycentricEpsilon
   ) {
-    return undefined;
+    return false;
   }
 
   const distance = (
@@ -61,33 +101,7 @@ function rayTriangleIntersection(
     + edge2Y * qY
     + edge2Z * qZ
   ) * inverseDeterminant;
-  return distance > 1e-10 ? distance : undefined;
-}
-
-function countUniqueIntersections(
-  point: Vec3,
-  direction: Vec3,
-  triangles: readonly PreparedTriangle[],
-): number {
-  const intersections: number[] = [];
-  for (const triangle of triangles) {
-    const intersection = rayTriangleIntersection(point, direction, triangle);
-    if (intersection !== undefined) {
-      intersections.push(intersection);
-    }
-  }
-
-  intersections.sort((left, right) => left - right);
-  let uniqueCount = 0;
-  let previous = -Infinity;
-  for (const intersection of intersections) {
-    const tolerance = 1e-8 * Math.max(1, Math.abs(intersection));
-    if (intersection - previous > tolerance) {
-      uniqueCount++;
-      previous = intersection;
-    }
-  }
-  return uniqueCount;
+  return distance > surfaceEpsilon;
 }
 
 export interface ParityClassification {
@@ -98,16 +112,31 @@ export interface ParityClassification {
 export function classifyPointByParity(
   point: Vec3,
   triangles: readonly PreparedTriangle[],
+  sampleIndex: number,
+  surfaceEpsilon: number,
 ): ParityClassification {
+  const jitterScale = Math.max(surfaceEpsilon * 8, 1e-7);
   let insideVotes = 0;
-  for (const direction of RAY_DIRECTIONS) {
-    if (countUniqueIntersections(point, direction, triangles) % 2 === 1) {
-      insideVotes++;
+  for (let axis = 0; axis < AXIS_DIRECTIONS.length; axis++) {
+    const origin = jitteredOrigin(
+      point,
+      sampleIndex,
+      axis,
+      jitterScale,
+    );
+    let intersectionCount = 0;
+    for (const triangle of triangles) {
+      intersectionCount += Number(rayTriangleIntersection(
+        origin,
+        AXIS_DIRECTIONS[axis]!,
+        triangle,
+        surfaceEpsilon,
+      ));
     }
+    insideVotes += Number((intersectionCount & 1) === 1);
   }
-
   return {
     inside: insideVotes >= 2,
-    rayTriangleTests: RAY_DIRECTIONS.length * triangles.length,
+    rayTriangleTests: AXIS_DIRECTIONS.length * triangles.length,
   };
 }

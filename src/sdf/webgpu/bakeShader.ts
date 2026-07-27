@@ -352,7 +352,10 @@ fn main(@builtin(global_invocation_id) globalId: vec3<u32>) {
   var value = unsignedDistance;
   if (params.signMode == 2u) {
     value = unsignedDistance - params.surface.x;
-  } else if (params.signMode == 1u && unsignedDistance > params.surface.y) {
+  } else if (
+    (params.signMode == 1u || params.signMode == 3u)
+    && unsignedDistance > params.surface.y
+  ) {
     var insideVotes = 0u;
     if (classifyAxisParity(point, sampleIndex, 0u)) {
       insideVotes = insideVotes + 1u;
@@ -368,6 +371,9 @@ fn main(@builtin(global_invocation_id) globalId: vec3<u32>) {
     }
   } else if (unsignedDistance <= params.surface.y) {
     value = 0.0;
+  }
+  if (params.signMode == 3u) {
+    value = min(value, unsignedDistance - params.surface.x);
   }
   sdfOutput[sampleIndex] = value;
 }

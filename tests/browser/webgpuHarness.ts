@@ -26,6 +26,7 @@ interface BrowserResult {
   readonly adapter: string;
   readonly cube: FieldComparison;
   readonly shell: FieldComparison;
+  readonly parityShellUnion: FieldComparison;
   readonly composed: {
     readonly dualVertexCount: number;
     readonly triangleCount: number;
@@ -541,6 +542,14 @@ async function main(): Promise<BrowserResult> {
       cellCounts: [4, 4, 4],
       signPolicy: { kind: "shell", halfThickness: 0.2 },
     });
+    const parityShellUnion = await runCase(device, createPlaneMesh(), {
+      domain: { min: [-1, -1, -1], max: [1, 1, 1] },
+      cellCounts: [4, 4, 4],
+      signPolicy: {
+        kind: "parity-shell-union",
+        halfThickness: 0.2,
+      },
+    });
     const composed = await runComposedCase(device);
     const composedSphere = await runComposedSphereCase(device);
     const millionTriangleCancellation = (
@@ -565,6 +574,18 @@ async function main(): Promise<BrowserResult> {
         `shell maximum error ${shell.comparison.maximumAbsoluteError} is too high`,
       );
     }
+    if (parityShellUnion.comparison.maximumAbsoluteError > 1e-4) {
+      throw new Error(
+        "parity-shell union maximum error "
+        + `${parityShellUnion.comparison.maximumAbsoluteError} is too high`,
+      );
+    }
+    if (parityShellUnion.comparison.signMismatchCount !== 0) {
+      throw new Error(
+        "parity-shell union has "
+        + `${parityShellUnion.comparison.signMismatchCount} sign mismatches`,
+      );
+    }
 
     const adapterInfo = adapter.info;
     return {
@@ -576,6 +597,7 @@ async function main(): Promise<BrowserResult> {
       ].filter((value) => value.length > 0).join(" "),
       cube: cube.comparison,
       shell: shell.comparison,
+      parityShellUnion: parityShellUnion.comparison,
       composed,
       composedSphere,
       millionTriangleCancellation,

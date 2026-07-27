@@ -104,13 +104,18 @@ idle/loading phase when first-use shader compilation latency matters.
 
 - Use `parity` for closed geometry. It uses three jittered axis rays and a
   majority vote, so reversed input winding is supported.
+- Use `parity-shell-union` for mostly closed geometry whose open, thin, or
+  sparsely defective features must survive a coarse field. It preserves the
+  parity interior and unions it with an explicit two-sided rescue shell.
 - Use `shell` with an explicit half-thickness for open surfaces, cards, and
   thin walls.
 - Use `unsigned` only when no zero-isosurface extraction is required.
 
 Parity is not a general repair operation for self-intersecting or non-manifold
-input. Applications should keep their previous proxy or a conservative
-fallback when a job refuses, is cancelled, or receives unsuitable geometry.
+input. `parity-shell-union` is likewise not automatic topology repair: its
+thickness is a product policy that deliberately expands every source surface.
+Applications should keep their previous proxy or a conservative fallback when
+a job refuses, is cancelled, or receives unsuitable geometry.
 
 ## Scope
 

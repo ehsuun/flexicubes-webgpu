@@ -32,7 +32,7 @@ export interface ResolvedWebGpuSdfPlan {
   readonly maxGpuBytes: number;
   readonly maxTriangleReferences: number;
   readonly surfaceEpsilon: number;
-  readonly signMode: 0 | 1 | 2;
+  readonly signMode: 0 | 1 | 2 | 3;
   readonly shellHalfThickness: number;
 }
 
@@ -63,12 +63,15 @@ function chooseBinResolution(lattice: Lattice3D): number {
   return 16;
 }
 
-function signMode(options: WebGpuDenseSdfBakeOptions): 0 | 1 | 2 {
+function signMode(options: WebGpuDenseSdfBakeOptions): 0 | 1 | 2 | 3 {
   if (options.signPolicy.kind === "parity") {
     return 1;
   }
   if (options.signPolicy.kind === "shell") {
     return 2;
+  }
+  if (options.signPolicy.kind === "parity-shell-union") {
+    return 3;
   }
   return 0;
 }
@@ -211,11 +214,17 @@ export function resolveWebGpuSdfPlan(
     );
   }
 
-  const shellHalfThickness = options.signPolicy.kind === "shell"
+  const shellHalfThickness = (
+    options.signPolicy.kind === "shell"
+    || options.signPolicy.kind === "parity-shell-union"
+  )
     ? options.signPolicy.halfThickness
     : 0;
   if (
-    options.signPolicy.kind === "shell"
+    (
+      options.signPolicy.kind === "shell"
+      || options.signPolicy.kind === "parity-shell-union"
+    )
     && (
       !Number.isFinite(shellHalfThickness)
       || shellHalfThickness <= 0

@@ -93,14 +93,19 @@ its geometry assumption explicit:
 
 - `parity`: multi-direction ray parity with deterministic handling of shared
   edges and vertices.
+- `parity-shell-union`: the minimum of the parity-classified signed distance
+  and unsigned distance minus a requested half-thickness. This keeps the
+  parity interior while giving open, thin, and sparsely defective features a
+  bounded two-sided rescue shell.
 - `shell`: unsigned distance minus a requested thickness for open or thin
   geometry such as walls and cards.
 - `unsigned`: distance only, for consumers that do not extract a closed
   isosurface.
 
-The dense backend implements `parity`, `shell`, and `unsigned`. Generalized
-winding is a later quality option, not a prerequisite for bounded runtime
-behavior.
+The dense backend implements all four policies. `parity-shell-union` does not
+infer caps or delete geometry; the consuming application must choose its
+thickness from a documented resolution/quality policy. Generalized winding is
+a later quality option, not a prerequisite for bounded runtime behavior.
 
 ### Acceleration
 
@@ -226,7 +231,11 @@ Total completion time alone cannot certify an interactive path.
 - Dense storage scales with lattice volume and is intentionally bounded.
 - Three-axis parity is robust to winding reversal but cannot make arbitrary
   self-intersecting or non-manifold input well-defined.
-- Open and thin geometry needs explicit shell thickness.
+- Open and thin geometry needs explicit shell thickness, either as a shell or
+  as the rescue term in `parity-shell-union`.
+- `parity-shell-union` expands all source surfaces by its requested
+  half-thickness. It is a conservative representation policy, not a
+  reconstruction of missing source topology.
 - Cancellation occurs between asynchronous upload/dispatch batches; submitted
   GPU work itself cannot be recalled.
 - Final positions, indices, and provenance are read back to CPU. Only the

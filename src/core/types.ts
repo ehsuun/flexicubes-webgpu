@@ -26,6 +26,10 @@ export interface Lattice3D {
 
 export type SdfSignPolicy =
   | { readonly kind: "parity" }
+  | {
+    readonly kind: "parity-shell-union";
+    readonly halfThickness: number;
+  }
   | { readonly kind: "shell"; readonly halfThickness: number }
   | { readonly kind: "unsigned" };
 
