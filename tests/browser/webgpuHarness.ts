@@ -2,6 +2,7 @@ import {
   bakeDenseSdfCpuReference,
   bakeDenseSdfWebGpu,
   bakeDenseSdfWebGpuResident,
+  buildProxyMeshLodsWebGpu,
   buildProxyMeshWebGpu,
   downloadDenseScalarFieldWebGpu,
   extractFlexiCubesCpuReference,
@@ -36,6 +37,14 @@ interface BrowserResult {
   readonly composedSphere: {
     readonly sourceTriangleCount: number;
     readonly proxyTriangleCount: number;
+  };
+  readonly multiLod: {
+    readonly triangleCounts: readonly [number, number, number];
+    readonly cellCounts: readonly [
+      readonly [number, number, number],
+      readonly [number, number, number],
+      readonly [number, number, number],
+    ];
   };
   readonly millionTriangleCancellation: {
     readonly callReturnMs: number;
@@ -519,6 +528,73 @@ async function runComposedSphereCase(device: GPUDevice): Promise<{
   };
 }
 
+async function runMultiLodCase(device: GPUDevice): Promise<{
+  readonly triangleCounts: readonly [number, number, number];
+  readonly cellCounts: readonly [
+    readonly [number, number, number],
+    readonly [number, number, number],
+    readonly [number, number, number],
+  ];
+}> {
+  const center = [0, 0, 0] as const;
+  const result = await buildProxyMeshLodsWebGpu(
+    device,
+    createCubeMesh(center, 0.45),
+    {
+      domain: { min: [-1, -1, -1], max: [1, 1, 1] },
+      cellCounts: [16, 16, 16],
+      signPolicy: { kind: "parity" },
+      execution: {
+        distanceBinResolution: 4,
+        parityBinResolution: 4,
+        maxGpuBytes: 64 * 1024 * 1024,
+      },
+    },
+    [
+      {
+        cellRatio: 1,
+        extraction: {
+          maxOutputTriangles: 100_000,
+          execution: { maxGpuBytes: 64 * 1024 * 1024 },
+        },
+      },
+      {
+        cellRatio: 2,
+        extraction: {
+          maxOutputTriangles: 100_000,
+          execution: { maxGpuBytes: 64 * 1024 * 1024 },
+        },
+      },
+      {
+        cellRatio: 4,
+        extraction: {
+          maxOutputTriangles: 100_000,
+          execution: { maxGpuBytes: 64 * 1024 * 1024 },
+        },
+      },
+    ],
+  );
+  for (const lod of result.lods) {
+    if (lod.mesh.indices.length === 0) {
+      throw new Error(`multi-LOD level ${lod.level} has no triangles`);
+    }
+    assertClosedManifold(lod.mesh.indices);
+    assertOutwardWinding(lod.mesh.positions, lod.mesh.indices, center);
+  }
+  return {
+    triangleCounts: [
+      result.lods[0].extractionStats.triangleCount,
+      result.lods[1].extractionStats.triangleCount,
+      result.lods[2].extractionStats.triangleCount,
+    ],
+    cellCounts: [
+      result.lods[0].cellCounts,
+      result.lods[1].cellCounts,
+      result.lods[2].cellCounts,
+    ],
+  };
+}
+
 async function main(): Promise<BrowserResult> {
   if (navigator.gpu === undefined) {
     throw new Error("navigator.gpu is unavailable");
@@ -552,6 +628,7 @@ async function main(): Promise<BrowserResult> {
     });
     const composed = await runComposedCase(device);
     const composedSphere = await runComposedSphereCase(device);
+    const multiLod = await runMultiLodCase(device);
     const millionTriangleCancellation = (
       await verifyMillionTriangleCancellation(device)
     );
@@ -600,6 +677,7 @@ async function main(): Promise<BrowserResult> {
       parityShellUnion: parityShellUnion.comparison,
       composed,
       composedSphere,
+      multiLod,
       millionTriangleCancellation,
       stress,
       gpuStats: {

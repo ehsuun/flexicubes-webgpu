@@ -205,3 +205,28 @@ export interface WebGpuProxyMeshResult {
   readonly extractionStats: WebGpuFlexiCubesExtractionStats;
   readonly elapsedMs: number;
 }
+
+export interface WebGpuProxyMeshLodOptions {
+  readonly cellRatio: number;
+  readonly extraction?: WebGpuFlexiCubesExtractOptions;
+  readonly maxDerivedFieldBytes?: number;
+}
+
+export interface WebGpuProxyMeshLodResult {
+  readonly level: 0 | 1 | 2;
+  readonly cellRatio: number;
+  readonly cellCounts: GridSize3;
+  readonly mesh: ExtractedMesh;
+  readonly extractionStats: WebGpuFlexiCubesExtractionStats;
+  readonly fieldDerivationMs: number;
+}
+
+export interface WebGpuProxyMeshLodsResult {
+  readonly lods: readonly [
+    WebGpuProxyMeshLodResult,
+    WebGpuProxyMeshLodResult,
+    WebGpuProxyMeshLodResult,
+  ];
+  readonly sdfStats: WebGpuSdfBakeStats;
+  readonly elapsedMs: number;
+}

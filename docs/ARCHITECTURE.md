@@ -24,6 +24,12 @@ SDF builder -----> ScalarField3D
 The composed pipeline keeps `ScalarField3D` GPU-resident. Downloading a field
 and uploading it again is not an acceptable production path.
 
+The multi-LOD pipeline bakes one finest GPU-resident field, derives aligned
+coarse fields by selecting coincident fine samples, and extracts each LOD
+independently. It never averages signed distances: averaging can erase or move
+zero crossings. Consumers remain responsible for rejecting a coarse LOD whose
+surface or silhouette validation does not meet their quality policy.
+
 ## Data contracts
 
 The TypeScript names may change during alpha, but the semantics below are
@@ -168,6 +174,12 @@ Two API levels are implemented:
 - High level: typed arrays in, typed arrays out.
 - Composed GPU: typed arrays in, a GPU-resident scalar field between stages,
   and a compact typed-array mesh out.
+
+`buildProxyMeshLodsWebGpu` is the bounded multi-LOD composition. It requires
+three strictly increasing integer cell ratios beginning at one. Fine cell
+counts must be divisible by every ratio, so every coarse lattice is aligned
+with the fine lattice. Only one derived field is alive during extraction, and
+all fine/derived GPU fields are released on success, error, and cancellation.
 
 Accepting externally owned position/index buffers and returning GPU-owned mesh
 buffers are future API levels, not current claims.

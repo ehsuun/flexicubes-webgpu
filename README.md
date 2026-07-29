@@ -100,6 +100,35 @@ belongs to the `GPUDevice` that created it, and must be disposed.
 Call `prewarmSdfWebGpu(device)` and `prewarmFlexiCubesWebGpu(device)` during an
 idle/loading phase when first-use shader compilation latency matters.
 
+### Multi-LOD proxy generation
+
+`buildProxyMeshLodsWebGpu` bakes one fine SDF and extracts three aligned proxy
+meshes without downloading or rebaking the field:
+
+```ts
+import { buildProxyMeshLodsWebGpu } from "flexicubes-webgpu/pipeline";
+
+const result = await buildProxyMeshLodsWebGpu(
+  device,
+  { positions, indices },
+  {
+    domain,
+    cellCounts: [24, 24, 24],
+    signPolicy: { kind: "parity" },
+  },
+  [
+    { cellRatio: 1 },
+    { cellRatio: 2 },
+    { cellRatio: 4 },
+  ],
+);
+```
+
+The result contains LODs at 24³, 12³, and 6³ cells. Coarse values come from
+coincident fine samples, not signed-distance averaging. Every temporary GPU
+field is owned by the call and released after extraction, including failure
+and cancellation paths.
+
 ## Geometry policy
 
 - Use `parity` for closed geometry. It uses three jittered axis rays and a
