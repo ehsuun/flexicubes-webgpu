@@ -40,6 +40,9 @@ export type {
   WebGpuSdfBakeResult,
   WebGpuResidentSdfBakeResult,
   WebGpuProxyMeshResult,
+  WebGpuProxyMeshLodOptions,
+  WebGpuProxyMeshLodResult,
+  WebGpuProxyMeshLodsResult,
   WebGpuSdfBakeStats,
   WebGpuSdfExecutionLimits,
 } from "./types.js";
