@@ -40,6 +40,8 @@ interface BrowserResult {
   };
   readonly multiLod: {
     readonly triangleCounts: readonly [number, number, number];
+    readonly finalIsoValues: readonly [number, number, number];
+    readonly fallbackSourceLevels: readonly [number, number, number];
     readonly cellCounts: readonly [
       readonly [number, number, number],
       readonly [number, number, number],
@@ -530,6 +532,8 @@ async function runComposedSphereCase(device: GPUDevice): Promise<{
 
 async function runMultiLodCase(device: GPUDevice): Promise<{
   readonly triangleCounts: readonly [number, number, number];
+  readonly finalIsoValues: readonly [number, number, number];
+  readonly fallbackSourceLevels: readonly [number, number, number];
   readonly cellCounts: readonly [
     readonly [number, number, number],
     readonly [number, number, number],
@@ -553,6 +557,10 @@ async function runMultiLodCase(device: GPUDevice): Promise<{
     [
       {
         cellRatio: 1,
+        outerEnvelope: {
+          minimumSeparation: 0.02,
+          maximumExpansion: 0.3,
+        },
         extraction: {
           maxOutputTriangles: 100_000,
           execution: { maxGpuBytes: 64 * 1024 * 1024 },
@@ -560,6 +568,10 @@ async function runMultiLodCase(device: GPUDevice): Promise<{
       },
       {
         cellRatio: 2,
+        outerEnvelope: {
+          minimumSeparation: 0.02,
+          maximumExpansion: 0.3,
+        },
         extraction: {
           maxOutputTriangles: 100_000,
           execution: { maxGpuBytes: 64 * 1024 * 1024 },
@@ -567,6 +579,11 @@ async function runMultiLodCase(device: GPUDevice): Promise<{
       },
       {
         cellRatio: 4,
+        outerEnvelope: {
+          minimumSeparation: 0.02,
+          maximumExpansion: 0.001,
+        },
+        outerEnvelopeFallback: "previous-verified-lod",
         extraction: {
           maxOutputTriangles: 100_000,
           execution: { maxGpuBytes: 64 * 1024 * 1024 },
@@ -580,12 +597,38 @@ async function runMultiLodCase(device: GPUDevice): Promise<{
     }
     assertClosedManifold(lod.mesh.indices);
     assertOutwardWinding(lod.mesh.positions, lod.mesh.indices, center);
+    if (
+      lod.outerEnvelope === undefined
+      || lod.outerEnvelope.finalVerification.violationCount !== 0
+    ) {
+      throw new Error(`multi-LOD level ${lod.level} lacks outer-envelope evidence`);
+    }
   }
+  if (result.lods[2].outerEnvelopeFallback?.sourceLevel !== 1) {
+    throw new Error("multi-LOD coarse rejection did not reuse verified LOD 1");
+  }
+  const finalIsoValue = (level: 0 | 1 | 2): number => {
+    const envelope = result.lods[level].outerEnvelope;
+    if (envelope === undefined) {
+      throw new Error(`multi-LOD level ${level} lacks outer-envelope evidence`);
+    }
+    return envelope.finalIsoValue;
+  };
   return {
     triangleCounts: [
       result.lods[0].extractionStats.triangleCount,
       result.lods[1].extractionStats.triangleCount,
       result.lods[2].extractionStats.triangleCount,
+    ],
+    finalIsoValues: [
+      finalIsoValue(0),
+      finalIsoValue(1),
+      finalIsoValue(2),
+    ],
+    fallbackSourceLevels: [
+      result.lods[0].outerEnvelopeFallback?.sourceLevel ?? 0,
+      result.lods[1].outerEnvelopeFallback?.sourceLevel ?? 1,
+      result.lods[2].outerEnvelopeFallback?.sourceLevel ?? 2,
     ],
     cellCounts: [
       result.lods[0].cellCounts,

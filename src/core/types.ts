@@ -203,13 +203,66 @@ export interface WebGpuProxyMeshResult {
   readonly mesh: ExtractedMesh;
   readonly sdfStats: WebGpuSdfBakeStats;
   readonly extractionStats: WebGpuFlexiCubesExtractionStats;
+  readonly outerEnvelope?: ProxyOuterEnvelopeEvidence;
+  readonly elapsedMs: number;
+}
+
+export interface ProxyOuterEnvelopeProgress {
+  readonly attempt: number;
+  readonly maximumAttempts: number;
+  readonly isoValue: number;
+  readonly completedSamples: number;
+  readonly totalSamples: number;
+}
+
+export interface ProxyOuterEnvelopeVerificationOptions {
+  readonly minimumSeparation: number;
+  readonly maximumSourceSamples?: number;
+  readonly sampleBatchSize?: number;
+  readonly signal?: AbortSignal;
+}
+
+export interface ProxyOuterEnvelopeOptions {
+  readonly minimumSeparation: number;
+  readonly maximumExpansion: number;
+  readonly maximumAttempts?: number;
+  readonly maximumSourceSamples?: number;
+  readonly sampleBatchSize?: number;
+  readonly onProgress?: (progress: ProxyOuterEnvelopeProgress) => void;
+}
+
+export interface ProxyOuterEnvelopeVerificationEvidence {
+  readonly method: "sampled-source-surface";
+  readonly sampleStrategy: "uniform-vertices-and-triangle-centroids";
+  readonly sourceSampleCount: number;
+  readonly violationCount: number;
+  readonly minimumSignedSeparation: number;
+  readonly maximumIngress: number;
+  readonly queryCount: number;
+}
+
+export interface ProxyOuterEnvelopeEvidence {
+  readonly attempts: number;
+  readonly initialIsoValue: number;
+  readonly finalIsoValue: number;
+  readonly initialVerification: ProxyOuterEnvelopeVerificationEvidence;
+  readonly finalVerification: ProxyOuterEnvelopeVerificationEvidence;
   readonly elapsedMs: number;
 }
 
 export interface WebGpuProxyMeshLodOptions {
   readonly cellRatio: number;
   readonly extraction?: WebGpuFlexiCubesExtractOptions;
+  readonly outerEnvelope?: ProxyOuterEnvelopeOptions;
+  readonly outerEnvelopeFallback?: "previous-verified-lod";
   readonly maxDerivedFieldBytes?: number;
+}
+
+export interface ProxyOuterEnvelopeLodFallbackEvidence {
+  readonly kind: "previous-verified-lod";
+  readonly sourceLevel: 0 | 1;
+  readonly rejectedCellRatio: number;
+  readonly rejection: ProxyOuterEnvelopeEvidence;
 }
 
 export interface WebGpuProxyMeshLodResult {
@@ -218,6 +271,8 @@ export interface WebGpuProxyMeshLodResult {
   readonly cellCounts: GridSize3;
   readonly mesh: ExtractedMesh;
   readonly extractionStats: WebGpuFlexiCubesExtractionStats;
+  readonly outerEnvelope?: ProxyOuterEnvelopeEvidence;
+  readonly outerEnvelopeFallback?: ProxyOuterEnvelopeLodFallbackEvidence;
   readonly fieldDerivationMs: number;
 }
 

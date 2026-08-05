@@ -129,6 +129,56 @@ coincident fine samples, not signed-distance averaging. Every temporary GPU
 field is owned by the call and released after extraction, including failure
 and cancellation paths.
 
+### Conservative outer envelopes
+
+Proxy extraction can optionally require the result to remain outside the
+source surface by a caller-selected minimum separation:
+
+```ts
+const result = await buildProxyMeshLodsWebGpu(
+  device,
+  { positions, indices },
+  sdfOptions,
+  [
+    {
+      cellRatio: 1,
+      outerEnvelope: {
+        minimumSeparation: 0.01,
+        maximumExpansion: 0.08,
+      },
+    },
+    {
+      cellRatio: 2,
+      outerEnvelope: {
+        minimumSeparation: 0.01,
+        maximumExpansion: 0.08,
+      },
+      outerEnvelopeFallback: "previous-verified-lod",
+    },
+    {
+      cellRatio: 4,
+      outerEnvelope: {
+        minimumSeparation: 0.01,
+        maximumExpansion: 0.08,
+      },
+      outerEnvelopeFallback: "previous-verified-lod",
+    },
+  ],
+);
+```
+
+The pipeline verifies deterministic samples from source vertices and triangle
+centroids against the extracted proxy. If any sample is inward, it re-extracts
+the same resident SDF at a larger iso value, bounded by `maximumExpansion` and
+`maximumAttempts`. It returns the sampled evidence with the result and throws
+`ProxyOuterEnvelopeError` when the bound cannot be met. This is a sampled
+validation contract, not a mathematical enclosure proof.
+
+`previous-verified-lod` is an explicit multi-LOD quality fallback. LOD 0 must
+always pass. A rejected coarse LOD may reuse the previous verified finer mesh,
+and the result records which ratio was rejected; it never publishes an inward
+coarse surface. Keep `maximumExpansion` within the SDF domain padding.
+
 ## Geometry policy
 
 - Use `parity` for closed geometry. It uses three jittered axis rays and a

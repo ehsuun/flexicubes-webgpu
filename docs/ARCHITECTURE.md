@@ -161,6 +161,30 @@ The alpha uses fixed fields and uniform FlexiCubes weights. It does not
 claim the optimization-time quality improvements from the paper, which rely on
 learned or optimized flexible parameters.
 
+### Conservative carrier extraction
+
+Some consumers need a proxy that is guaranteed by explicit evidence to stay
+outside the source samples. The optional outer-envelope pipeline treats the
+negative-inside SDF as the geometry authority and adapts only its extraction
+iso value. It does not deform extracted vertices: closest-point vertex pushes
+can fold triangles, invert winding, or jump between nearby components.
+
+Each attempt extracts a closed proxy, builds a CPU BVH over its triangles, and
+measures signed separation for a deterministic bounded set of source vertices
+and triangle centroids. The proxy triangle winding supplies the outward normal.
+An attempt passes only when every sampled separation meets the caller's minimum.
+Otherwise, the next iso increment is derived from measured maximum ingress and
+is bounded by the caller's maximum expansion and attempt count.
+
+Multi-LOD callers may explicitly permit a failed coarse extraction to reuse the
+previous verified finer LOD. LOD 0 cannot fall back. Reuse preserves the finer
+mesh and cell metadata and records the rejected ratio and its evidence, making
+the quality loss observable instead of silently publishing an invalid carrier.
+
+This contract proves only the samples it reports. Applications that need a
+stronger guarantee must request an appropriate sample budget or provide their
+own validation before accepting the proxy.
+
 Lookup tables adapted from the official implementation retain upstream notices
 and modification markers.
 
@@ -254,6 +278,8 @@ Total completion time alone cannot certify an interactive path.
   intermediate scalar field stays resident.
 - Uniform fixed-field weights do not provide the paper's
   optimization/training-time benefits.
+- Outer-envelope verification is deterministic and bounded but sample-based;
+  it is not a continuous mathematical proof of containment.
 
 ## Product boundary
 

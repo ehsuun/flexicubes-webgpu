@@ -11,6 +11,8 @@ import { bakeDenseSdfWebGpuResident } from "../sdf/webgpu/bake.js";
 import { deriveNestedDenseScalarFieldWebGpu } from
   "../sdf/webgpu/deriveNested.js";
 import { withAsyncResource } from "./resourceLifetime.js";
+import { ProxyOuterEnvelopeError } from "./outerEnvelope.js";
+import { extractProxyOuterEnvelope } from "./outerEnvelopeExtraction.js";
 
 type LodOptionsTuple = readonly [
   WebGpuProxyMeshLodOptions,
@@ -47,6 +49,7 @@ const validateLodOptions = (
 
 const extractLod = async (
   device: GPUDevice,
+  source: IndexedMesh,
   fineField: GpuDenseScalarField3D,
   level: 0 | 1 | 2,
   options: WebGpuProxyMeshLodOptions,
@@ -70,17 +73,46 @@ const extractLod = async (
     field: GpuDenseScalarField3D,
   ): Promise<WebGpuProxyMeshLodResult> => {
     const fieldDerivationMs = performance.now() - derivationStartedAt;
-    const extraction = await extractFlexiCubesWebGpu(
-      device,
-      field,
-      options.extraction,
-    );
+    const extractionOptions = options.extraction ?? {};
+    let extracted;
+    try {
+      extracted = options.outerEnvelope === undefined
+        ? {
+          extraction: await extractFlexiCubesWebGpu(
+            device,
+            field,
+            extractionOptions,
+          ),
+          evidence: undefined,
+        }
+        : await extractProxyOuterEnvelope(
+          source,
+          extractionOptions.isoValue ?? 0,
+          options.outerEnvelope,
+          extractionOptions.signal,
+          isoValue => extractFlexiCubesWebGpu(device, field, {
+            ...extractionOptions,
+            isoValue,
+          }),
+        );
+    } catch (error) {
+      if (error instanceof ProxyOuterEnvelopeError) {
+        throw new ProxyOuterEnvelopeError(
+          `LOD ${level}: ${error.message}`,
+          error.evidence,
+        );
+      }
+      throw error;
+    }
     return {
       level,
       cellRatio: options.cellRatio,
       cellCounts: field.cellCounts,
-      mesh: extraction.mesh,
-      extractionStats: extraction.stats,
+      mesh: extracted.extraction.mesh,
+      extractionStats: extracted.extraction.stats,
+      ...(extracted.evidence === undefined
+        ? {}
+        : { outerEnvelope: extracted.evidence }),
       fieldDerivationMs,
     };
   };
@@ -88,6 +120,44 @@ const extractLod = async (
     return useField(fineField);
   }
   return withAsyncResource(acquire, (field) => field.dispose(), useField);
+};
+
+const extractLodWithFallback = async (
+  device: GPUDevice,
+  source: IndexedMesh,
+  fineField: GpuDenseScalarField3D,
+  level: 0 | 1 | 2,
+  options: WebGpuProxyMeshLodOptions,
+  previous: WebGpuProxyMeshLodResult | undefined,
+): Promise<WebGpuProxyMeshLodResult> => {
+  try {
+    return await extractLod(device, source, fineField, level, options);
+  } catch (error) {
+    if (
+      !(error instanceof ProxyOuterEnvelopeError)
+      || options.outerEnvelopeFallback !== "previous-verified-lod"
+      || previous === undefined
+    ) {
+      throw error;
+    }
+    const sourceLevel = previous.outerEnvelopeFallback?.sourceLevel
+      ?? (previous.level === 0 || previous.level === 1
+        ? previous.level
+        : undefined);
+    if (sourceLevel === undefined) {
+      throw new Error("outer-envelope LOD fallback source must be finer");
+    }
+    return {
+      ...previous,
+      level,
+      outerEnvelopeFallback: {
+        kind: "previous-verified-lod",
+        sourceLevel,
+        rejectedCellRatio: options.cellRatio,
+        rejection: error.evidence,
+      },
+    };
+  }
 };
 
 export async function buildProxyMeshLodsWebGpu(
@@ -102,9 +172,15 @@ export async function buildProxyMeshLodsWebGpu(
     () => bakeDenseSdfWebGpuResident(device, mesh, sdfOptions),
     (sdf) => sdf.field.dispose(),
     async (sdf) => {
-      const lod0 = await extractLod(device, sdf.field, 0, lodOptions[0]);
-      const lod1 = await extractLod(device, sdf.field, 1, lodOptions[1]);
-      const lod2 = await extractLod(device, sdf.field, 2, lodOptions[2]);
+      const lod0 = await extractLodWithFallback(
+        device, mesh, sdf.field, 0, lodOptions[0], undefined,
+      );
+      const lod1 = await extractLodWithFallback(
+        device, mesh, sdf.field, 1, lodOptions[1], lod0,
+      );
+      const lod2 = await extractLodWithFallback(
+        device, mesh, sdf.field, 2, lodOptions[2], lod1,
+      );
       return {
         lods: [lod0, lod1, lod2],
         sdfStats: sdf.stats,
